@@ -134,7 +134,10 @@ form{
   width:100%;
 }
 .row2{display:flex;gap:10px;}
-.row2 .field{flex:1;}
+.row2 .field{flex:1;min-width:0;}
+@media (max-width:420px){
+  .row2{flex-direction:column;}
+}
 
 .btn{
   border:none;
