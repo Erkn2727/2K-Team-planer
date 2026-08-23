@@ -260,6 +260,7 @@ footer{
       <button type="button" class="btn btn-danger" id="cancelBtn" style="display:none;">Meine Anmeldung zurückziehen</button>
       <div class="status-line" id="statusLine"></div>
     </form>
+    <div class="empty-hint" id="readonlyHint" style="display:none;">Anmeldungen sind nur für den heutigen Tag möglich. Hier siehst du nur das Ergebnis von diesem Spieltag.</div>
   </div>
 
   <div class="card">
@@ -389,7 +390,9 @@ document.getElementById("todayBtn").addEventListener("click", ()=>{
 function updateFormTitle(){
   const isToday = currentDate === todayStr();
   document.getElementById("formTitle").textContent =
-    (isToday ? "📝 Anmeldung für heute" : "📝 Anmeldung für " + formatDateDE(currentDate));
+    (isToday ? "📝 Anmeldung für heute" : "📅 Ergebnis für " + formatDateDE(currentDate));
+  document.getElementById("regForm").style.display = isToday ? "flex" : "none";
+  document.getElementById("readonlyHint").style.display = isToday ? "none" : "block";
 }
 function formatDateDE(iso){
   const [y,m,d] = iso.split("-");
