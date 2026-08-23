@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>NBA 2K Team-Planer</title>
+
+<!-- ============================================================
+     FIREBASE SDK (compat-Version, kein Build-Tool nötig)
+     ============================================================ -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+
+<style>
+:root{
+  --bg:#0b0f19;
+  --bg-card:#141b2d;
+  --bg-card-2:#1a2338;
+  --border:#26314a;
+  --text:#e8ecf5;
+  --text-dim:#8b96ad;
+  --orange:#ff8a1e;
+  --gold:#ffd166;
+  --blue:#3d9bff;
+  --green:#2ecc71;
+  --red:#ff5d5d;
+  --radius:16px;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  font-family:"Segoe UI",Roboto,Arial,sans-serif;
+  background:radial-gradient(circle at top, #101a30 0%, var(--bg) 60%);
+  color:var(--text);
+  min-height:100vh;
+  padding-bottom:60px;
+}
+header{
+  padding:22px 16px 14px;
+  text-align:center;
+  position:sticky;
+  top:0;
+  background:linear-gradient(180deg, rgba(11,15,25,0.97), rgba(11,15,25,0.85));
+  backdrop-filter:blur(6px);
+  z-index:50;
+  border-bottom:1px solid var(--border);
+}
+header h1{
+  margin:0;
+  font-size:1.5rem;
+  letter-spacing:0.5px;
+}
+header h1 span{color:var(--orange);}
+.subtitle{color:var(--text-dim);font-size:0.85rem;margin-top:4px;}
+
+.container{
+  max-width:640px;
+  margin:0 auto;
+  padding:16px;
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+}
+
+.date-bar{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:12px 14px;
+}
+.date-bar label{font-size:0.85rem;color:var(--text-dim);white-space:nowrap;}
+.date-bar input[type="date"]{
+  flex:1;
+  background:var(--bg-card-2);
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:8px 10px;
+  font-size:1rem;
+}
+.today-btn{
+  background:var(--blue);
+  color:#04101f;
+  border:none;
+  padding:8px 12px;
+  border-radius:10px;
+  font-weight:600;
+  font-size:0.8rem;
+  cursor:pointer;
+}
+
+.card{
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:16px;
+}
+.card h2{
+  margin:0 0 12px;
+  font-size:1.05rem;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.badge{
+  font-size:0.68rem;
+  padding:2px 8px;
+  border-radius:20px;
+  font-weight:700;
+  letter-spacing:0.3px;
+}
+.badge.team1{background:rgba(255,138,30,0.18);color:var(--orange);}
+.badge.team2{background:rgba(61,155,255,0.18);color:var(--blue);}
+.badge.wait{background:rgba(255,93,93,0.18);color:var(--red);}
+
+form{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.field{display:flex;flex-direction:column;gap:5px;}
+.field label{font-size:0.8rem;color:var(--text-dim);}
+.field input, .field select, .field textarea{
+  background:var(--bg-card-2);
+  border:1px solid var(--border);
+  color:var(--text);
+  padding:11px 12px;
+  border-radius:10px;
+  font-size:1rem;
+  width:100%;
+}
+.row2{display:flex;gap:10px;}
+.row2 .field{flex:1;}
+
+.btn{
+  border:none;
+  border-radius:12px;
+  padding:14px 16px;
+  font-size:1rem;
+  font-weight:700;
+  cursor:pointer;
+  width:100%;
+  transition:transform .1s ease, opacity .15s ease;
+}
+.btn:active{transform:scale(0.98);}
+.btn-primary{background:linear-gradient(135deg, var(--orange), var(--gold));color:#1a1204;}
+.btn-danger{background:rgba(255,93,93,0.15);color:var(--red);border:1px solid var(--red);}
+.btn-secondary{background:var(--bg-card-2);color:var(--text);border:1px solid var(--border);}
+
+.status-line{
+  font-size:0.8rem;
+  color:var(--text-dim);
+  text-align:center;
+  min-height:16px;
+}
+
+.slot-list{display:flex;flex-direction:column;gap:8px;}
+.slot{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  background:var(--bg-card-2);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:10px 12px;
+}
+.slot.free{opacity:0.55;border-style:dashed;}
+.slot.mine{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset;}
+.slot-pos{
+  width:38px;
+  height:38px;
+  flex-shrink:0;
+  border-radius:10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:800;
+  font-size:0.8rem;
+  background:rgba(255,255,255,0.06);
+}
+.slot-info{flex:1;min-width:0;}
+.slot-name{font-weight:600;font-size:0.95rem;}
+.slot-meta{font-size:0.72rem;color:var(--text-dim);margin-top:2px;line-height:1.35;}
+.slot-note{font-size:0.72rem;color:var(--gold);margin-top:2px;font-style:italic;}
+
+.team-progress{
+  font-size:0.78rem;
+  color:var(--blue);
+  margin-bottom:10px;
+  background:rgba(61,155,255,0.1);
+  padding:6px 10px;
+  border-radius:8px;
+  display:inline-block;
+}
+
+.waitlist-item{
+  background:rgba(255,93,93,0.08);
+  border:1px solid rgba(255,93,93,0.3);
+}
+
+.empty-hint{color:var(--text-dim);font-size:0.85rem;text-align:center;padding:10px 0;}
+
+footer{
+  text-align:center;
+  color:var(--text-dim);
+  font-size:0.72rem;
+  padding:20px 16px 0;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>NBA 2K <span>Team-Planer</span></h1>
+  <div class="subtitle">Einmal eintragen &middot; automatisch einteilen &middot; live für alle sichtbar</div>
+</header>
+
+<div class="container">
+
+  <div class="date-bar">
+    <label for="dateInput">Spieltag:</label>
+    <input type="date" id="dateInput">
+    <button class="today-btn" id="todayBtn">Heute</button>
+  </div>
+
+  <div class="card" id="formCard">
+    <h2 id="formTitle">📝 Anmeldung für heute</h2>
+    <form id="regForm">
+      <div class="field">
+        <label>Name</label>
+        <input type="text" id="fName" placeholder="Dein Name" required maxlength="24">
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>Verfügbar ab</label>
+          <input type="time" id="fTime" required>
+        </div>
+        <div class="field">
+          <label>Wunschposition</label>
+          <select id="fWish"></select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Alternative Position (optional)</label>
+        <select id="fAlt"></select>
+      </div>
+      <div class="field">
+        <label>Notiz (optional)</label>
+        <input type="text" id="fNote" maxlength="60" placeholder="z.B. Kann erst ab 20:30 Uhr">
+      </div>
+      <button type="submit" class="btn btn-primary" id="submitBtn">Für heute anmelden</button>
+      <button type="button" class="btn btn-danger" id="cancelBtn" style="display:none;">Meine Anmeldung zurückziehen</button>
+      <div class="status-line" id="statusLine"></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2><span class="badge team1">TEAM 1</span></h2>
+    <div class="slot-list" id="team1List"></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="badge team2">TEAM 2</span></h2>
+    <div class="team-progress" id="team2Progress"></div>
+    <div class="slot-list" id="team2List"></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="badge wait">WARTELISTE</span></h2>
+    <div class="slot-list" id="waitList"></div>
+  </div>
+
+</div>
+
+<footer>Nur für private Nutzung in eurer Gruppe · Daten werden pro Spieltag gespeichert</footer>
+
+<script>
+/* ============================================================
+   1) FIREBASE-KONFIGURATION (bereits mit deinen echten Werten
+   aus dem Projekt "nba2k-team-planer" befüllt)
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyAeYXjHsCWAQTyTrfck2541hgwzH3EO2L4",
+  authDomain: "nba2k-team-planer.firebaseapp.com",
+  databaseURL: "https://nba2k-team-planer-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "nba2k-team-planer",
+  storageBucket: "nba2k-team-planer.firebasestorage.app",
+  messagingSenderId: "253058975171",
+  appId: "1:253058975171:web:0555867a9a40188d36a976"
+};
+
+/* ============================================================
+   2) KONFIGURATION / EXTENSION POINTS
+   Hier kannst du später Namen, Positionen, Farben, Team-Größe
+   und Regeln zentral anpassen.
+   ============================================================ */
+const CONFIG = {
+  positions: ["PG", "SG", "SF", "PF", "C"],      // Standard-Positionen pro Team
+  positionNames: {
+    PG: "Point Guard", SG: "Shooting Guard", SF: "Small Forward",
+    PF: "Power Forward", C: "Center", FLEX: "Flexibel"
+  },
+  allowFlex: true,          // "Flexibel" als Wunschposition erlauben
+  numTeams: 2,              // Anzahl automatisch gebauter Teams (Team 1, Team 2, ...)
+  // -- Erweiterungs-Platzhalter für später (Punkt 11 der Anforderungen) --
+  adminMode: false,         // später: Admin-Rechte, Spieltag öffnen/schließen
+  registrationDeadline: null, // später: Uhrzeit für Anmeldeschluss
+  gameStartTime: null,      // später: Countdown bis Spielstart
+  groupPin: null            // später: Zugangscode für die Gruppe
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.database();
+
+let currentUid = null;
+let currentDate = todayStr();
+let unsubscribe = null;
+let latestPlayers = {};
+
+function todayStr(){
+  const d = new Date();
+  const off = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - off*60000);
+  return local.toISOString().slice(0,10);
+}
+
+/* ---------- Formular-Selects befüllen ---------- */
+function fillPositionSelect(select, includeEmpty, includeFlex){
+  select.innerHTML = "";
+  if(includeEmpty){
+    const opt = document.createElement("option");
+    opt.value = ""; opt.textContent = "Keine";
+    select.appendChild(opt);
+  }
+  CONFIG.positions.forEach(p=>{
+    const opt = document.createElement("option");
+    opt.value = p; opt.textContent = `${p} – ${CONFIG.positionNames[p]}`;
+    select.appendChild(opt);
+  });
+  if(includeFlex && CONFIG.allowFlex){
+    const opt = document.createElement("option");
+    opt.value = "FLEX"; opt.textContent = "Flexibel (jede freie Position)";
+    select.appendChild(opt);
+  }
+}
+fillPositionSelect(document.getElementById("fWish"), false, true);
+fillPositionSelect(document.getElementById("fAlt"), true, false);
+
+/* ---------- Auth: anonyme Anmeldung ---------- */
+auth.onAuthStateChanged(user=>{
+  if(user){
+    currentUid = user.uid;
+    prefillName();
+    listenToDay(currentDate);
+  }
+});
+auth.signInAnonymously().catch(err=>{
+  document.getElementById("statusLine").textContent = "Fehler bei der Anmeldung: " + err.message;
+});
+
+function prefillName(){
+  const saved = localStorage.getItem("nba2k_name");
+  if(saved) document.getElementById("fName").value = saved;
+}
+
+/* ---------- Datumsauswahl ---------- */
+const dateInput = document.getElementById("dateInput");
+dateInput.value = currentDate;
+dateInput.addEventListener("change", ()=>{
+  currentDate = dateInput.value || todayStr();
+  updateFormTitle();
+  listenToDay(currentDate);
+});
+document.getElementById("todayBtn").addEventListener("click", ()=>{
+  currentDate = todayStr();
+  dateInput.value = currentDate;
+  updateFormTitle();
+  listenToDay(currentDate);
+});
+function updateFormTitle(){
+  const isToday = currentDate === todayStr();
+  document.getElementById("formTitle").textContent =
+    (isToday ? "📝 Anmeldung für heute" : "📝 Anmeldung für " + formatDateDE(currentDate));
+}
+function formatDateDE(iso){
+  const [y,m,d] = iso.split("-");
+  return `${d}.${m}.${y}`;
+}
+updateFormTitle();
+
+/* ---------- Live-Listener pro Spieltag ---------- */
+function listenToDay(dateStr){
+  if(unsubscribe) unsubscribe();
+  const ref = db.ref(`days/${dateStr}/players`);
+  unsubscribe = ref.on("value", snap=>{
+    latestPlayers = snap.val() || {};
+    renderAll();
+  });
+}
+
+/* ---------- Formular: Anmelden / Aktualisieren ---------- */
+document.getElementById("regForm").addEventListener("submit", async (e)=>{
+  e.preventDefault();
+  const name = document.getElementById("fName").value.trim();
+  const availableFrom = document.getElementById("fTime").value;
+  const wishPosition = document.getElementById("fWish").value;
+  const altPosition = document.getElementById("fAlt").value;
+  const note = document.getElementById("fNote").value.trim();
+
+  if(!name || !availableFrom || !wishPosition){
+    setStatus("Bitte Name, Uhrzeit und Wunschposition ausfüllen.", true);
+    return;
+  }
+  localStorage.setItem("nba2k_name", name);
+
+  const ref = db.ref(`days/${currentDate}/players/${currentUid}`);
+  try{
+    const snap = await ref.once("value");
+    const existing = snap.val();
+    const data = { name, availableFrom, wishPosition, altPosition, note, uid: currentUid };
+    if(existing && existing.timestamp){
+      data.timestamp = existing.timestamp; // ursprüngliche Anmeldezeit bleibt erhalten
+    } else {
+      data.timestamp = firebase.database.ServerValue.TIMESTAMP; // neue, serverseitige Anmeldezeit
+    }
+    await ref.set(data);
+    setStatus(existing ? "Deine Angaben wurden aktualisiert." : "Du bist angemeldet!", false);
+  }catch(err){
+    setStatus("Fehler: " + err.message, true);
+  }
+});
+
+document.getElementById("cancelBtn").addEventListener("click", async ()=>{
+  if(!confirm("Anmeldung wirklich zurückziehen?")) return;
+  try{
+    await db.ref(`days/${currentDate}/players/${currentUid}`).remove();
+    setStatus("Anmeldung zurückgezogen.", false);
+  }catch(err){
+    setStatus("Fehler: " + err.message, true);
+  }
+});
+
+function setStatus(msg, isError){
+  const el = document.getElementById("statusLine");
+  el.textContent = msg;
+  el.style.color = isError ? "var(--red)" : "var(--green)";
+}
+
+/* ============================================================
+   3) TEAM-EINTEILUNGS-LOGIK
+   Reihenfolge: sortiert nach Anmeldezeit (timestamp) aufsteigend.
+   Für jeden Spieler wird Team für Team (Team 1, dann Team 2, ...)
+   geprüft:
+     a) Ist die Wunschposition in diesem Team frei -> zuweisen.
+     b) Sonst: ist die alternative Position frei -> zuweisen.
+     c) "Flexibel" -> erste freie Position im Team (PG..C Reihenfolge).
+     d) Wenn in keinem Team ein Platz passt -> Warteliste.
+   ============================================================ */
+function computeTeams(playersObj){
+  const players = Object.keys(playersObj || {}).map(uid=>({uid, ...playersObj[uid]}));
+  players.sort((a,b)=>{
+    const ta = typeof a.timestamp === "number" ? a.timestamp : Infinity;
+    const tb = typeof b.timestamp === "number" ? b.timestamp : Infinity;
+    return ta - tb;
+  });
+
+  const teams = [];
+  for(let i=0;i<CONFIG.numTeams;i++){
+    const slots = {};
+    CONFIG.positions.forEach(p=> slots[p] = null);
+    teams.push({ name: `Team ${i+1}`, slots });
+  }
+  const waitlist = [];
+
+  players.forEach(p=>{
+    let assigned = false;
+    for(const team of teams){
+      if(p.wishPosition === "FLEX"){
+        const freePos = CONFIG.positions.find(pos=> !team.slots[pos]);
+        if(freePos){
+          team.slots[freePos] = { ...p, reason: `Flexibel – freie Position in ${team.name}` };
+          assigned = true;
+          break;
+        }
+      } else {
+        if(!team.slots[p.wishPosition]){
+          team.slots[p.wishPosition] = { ...p, reason: `Wunschposition frei in ${team.name}` };
+          assigned = true;
+          break;
+        }
+        if(p.altPosition && !team.slots[p.altPosition]){
+          team.slots[p.altPosition] = { ...p, reason: `Alternative Position frei in ${team.name} (Wunsch belegt)` };
+          assigned = true;
+          break;
+        }
+      }
+    }
+    if(!assigned){
+      p.reason = "Keine passende Position (Wunsch & Alternative belegt) – auf Warteliste";
+      waitlist.push(p);
+    }
+  });
+
+  return { teams, waitlist };
+}
+
+/* ---------- Rendering ---------- */
+function renderAll(){
+  const { teams, waitlist } = computeTeams(latestPlayers);
+  renderTeam(teams[0], document.getElementById("team1List"), null);
+  renderTeam(teams[1], document.getElementById("team2List"), document.getElementById("team2Progress"));
+  renderWaitlist(waitlist);
+  syncMyForm();
+}
+
+function renderTeam(team, container, progressEl){
+  container.innerHTML = "";
+  let missing = 0;
+  CONFIG.positions.forEach(pos=>{
+    const entry = team.slots[pos];
+    const slot = document.createElement("div");
+    slot.className = "slot" + (entry ? "" : " free") + (entry && entry.uid === currentUid ? " mine" : "");
+    const posBox = document.createElement("div");
+    posBox.className = "slot-pos";
+    posBox.textContent = pos;
+    slot.appendChild(posBox);
+    const info = document.createElement("div");
+    info.className = "slot-info";
+    if(entry){
+      info.innerHTML = `
+        <div class="slot-name">${escapeHtml(entry.name)}</div>
+        <div class="slot-meta">Ab ${entry.availableFrom} Uhr &middot; Angemeldet um ${formatTime(entry.timestamp)}</div>
+        ${entry.note ? `<div class="slot-note">${escapeHtml(entry.note)}</div>` : ""}
+      `;
+    } else {
+      missing += 1;
+      info.innerHTML = `<div class="slot-name">Frei</div>`;
+    }
+    slot.appendChild(info);
+    container.appendChild(slot);
+  });
+  if(progressEl){
+    if(missing === 0){
+      progressEl.textContent = "Team 2 komplett ✅";
+      progressEl.style.color = "var(--green)";
+    } else {
+      progressEl.textContent = `Team 2 im Aufbau – noch ${missing} Spieler benötigt`;
+      progressEl.style.color = "var(--blue)";
+    }
+  }
+}
+
+function renderWaitlist(waitlist){
+  const container = document.getElementById("waitList");
+  container.innerHTML = "";
+  if(waitlist.length === 0){
+    container.innerHTML = `<div class="empty-hint">Aktuell niemand auf der Warteliste.</div>`;
+    return;
+  }
+  waitlist.forEach(p=>{
+    const slot = document.createElement("div");
+    slot.className = "slot waitlist-item" + (p.uid === currentUid ? " mine" : "");
+    const posBox = document.createElement("div");
+    posBox.className = "slot-pos";
+    posBox.textContent = p.wishPosition === "FLEX" ? "FLX" : p.wishPosition;
+    slot.appendChild(posBox);
+    const info = document.createElement("div");
+    info.className = "slot-info";
+    info.innerHTML = `
+      <div class="slot-name">${escapeHtml(p.name)}</div>
+      <div class="slot-meta">Ab ${p.availableFrom} Uhr &middot; Angemeldet um ${formatTime(p.timestamp)}</div>
+      <div class="slot-meta">${escapeHtml(p.reason)}</div>
+      ${p.note ? `<div class="slot-note">${escapeHtml(p.note)}</div>` : ""}
+    `;
+    slot.appendChild(info);
+    container.appendChild(slot);
+  });
+}
+
+function syncMyForm(){
+  const mine = latestPlayers[currentUid];
+  const cancelBtn = document.getElementById("cancelBtn");
+  const submitBtn = document.getElementById("submitBtn");
+  if(mine){
+    document.getElementById("fName").value = mine.name || "";
+    document.getElementById("fTime").value = mine.availableFrom || "";
+    document.getElementById("fWish").value = mine.wishPosition || "";
+    document.getElementById("fAlt").value = mine.altPosition || "";
+    document.getElementById("fNote").value = mine.note || "";
+    cancelBtn.style.display = "block";
+    submitBtn.textContent = "Angaben aktualisieren";
+  } else {
+    cancelBtn.style.display = "none";
+    submitBtn.textContent = "Für heute anmelden";
+  }
+}
+
+function formatTime(ts){
+  if(typeof ts !== "number") return "…";
+  return new Date(ts).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+}
+function escapeHtml(str){
+  const d = document.createElement("div");
+  d.textContent = str || "";
+  return d.innerHTML;
+}
+</script>
+</body>
+</html>
