@@ -566,9 +566,10 @@ function computeTeams(playersObj){
       team.slots[p.wishPosition] = p;
     } else if(team){
       waitlist.push({ ...p, reason: `Position war in ${team.name} bereits vergeben – auf Warteliste verschoben` });
-    } else {
+    } else if(p.team === "waitlist"){
       waitlist.push({ ...p, reason: "Warteliste gewählt" });
     }
+    // Alte Einträge ohne gültiges Team-Feld (vor Einführung der Team-Auswahl) werden ignoriert.
   });
 
   return { teams, waitlist };
