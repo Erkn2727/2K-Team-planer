@@ -253,6 +253,15 @@ footer{
         </div>
       </div>
       <div class="field">
+        <label>Team</label>
+        <select id="fTeam" required>
+          <option value="" disabled selected>Bitte wählen</option>
+          <option value="team1">Team 1</option>
+          <option value="team2">Team 2</option>
+          <option value="waitlist">Warteliste</option>
+        </select>
+      </div>
+      <div class="field">
         <label>Alternative Position (optional)</label>
         <select id="fAlt"></select>
       </div>
@@ -359,6 +368,40 @@ function fillPositionSelect(select, includeEmpty, includeFlex){
 }
 fillPositionSelect(document.getElementById("fWish"), false, true);
 fillPositionSelect(document.getElementById("fAlt"), true, false);
+document.getElementById("fWish").addEventListener("change", updateTeamOptions);
+
+/* ---------- Team-Auswahl: Team 1 / Team 2 ausgrauen, wenn die Wunschposition dort schon vergeben ist ---------- */
+function getTeamOccupancy(){
+  const occ = { team1: {}, team2: {} };
+  CONFIG.positions.forEach(p=>{ occ.team1[p] = null; occ.team2[p] = null; });
+  Object.keys(latestPlayers).forEach(uid=>{
+    const pl = latestPlayers[uid];
+    if((pl.team === "team1" || pl.team === "team2") && pl.wishPosition && pl.wishPosition !== "FLEX"){
+      occ[pl.team][pl.wishPosition] = uid;
+    }
+  });
+  return occ;
+}
+function updateTeamOptions(){
+  const wish = document.getElementById("fWish").value;
+  const sel = document.getElementById("fTeam");
+  const occ = getTeamOccupancy();
+  [["team1","Team 1"],["team2","Team 2"]].forEach(([key,label])=>{
+    const opt = sel.querySelector(`option[value="${key}"]`);
+    let full;
+    if(!wish || wish === "FLEX"){
+      full = CONFIG.positions.every(p=> occ[key][p] && occ[key][p] !== currentUid);
+    } else {
+      full = !!(occ[key][wish] && occ[key][wish] !== currentUid);
+    }
+    opt.disabled = full;
+    opt.textContent = label + (full ? " (Position belegt)" : "");
+  });
+  const selectedOpt = sel.selectedOptions[0];
+  if(selectedOpt && selectedOpt.disabled){
+    sel.value = "";
+  }
+}
 
 /* ---------- Auth: anonyme Anmeldung ---------- */
 auth.onAuthStateChanged(user=>{
@@ -422,18 +465,48 @@ document.getElementById("regForm").addEventListener("submit", async (e)=>{
   const wishPosition = document.getElementById("fWish").value;
   const altPosition = document.getElementById("fAlt").value;
   const note = document.getElementById("fNote").value.trim();
+  const team = document.getElementById("fTeam").value;
 
-  if(!name || !availableFrom || !wishPosition){
-    setStatus("Bitte Name, Uhrzeit und Wunschposition ausfüllen.", true);
+  if(!name || !availableFrom || !wishPosition || !team){
+    setStatus("Bitte Name, Uhrzeit, Wunschposition und Team ausfüllen.", true);
     return;
   }
   localStorage.setItem("nba2k_name", name);
 
-  const ref = db.ref(`days/${currentDate}/players/${currentUid}`);
+  const dayRef = db.ref(`days/${currentDate}/players`);
+  const ref = dayRef.child(currentUid);
   try{
     const snap = await ref.once("value");
     const existing = snap.val();
-    const data = { name, availableFrom, wishPosition, altPosition, note, uid: currentUid };
+
+    let finalPosition = wishPosition;
+    if(team === "team1" || team === "team2"){
+      // Live-Stand prüfen (Race Condition: jemand anderes hat die Position inzwischen belegt)
+      const daySnap = await dayRef.once("value");
+      const dayPlayers = daySnap.val() || {};
+      const occupantOf = (pos)=>{
+        for(const uid in dayPlayers){
+          if(uid === currentUid) continue;
+          if(dayPlayers[uid].team === team && dayPlayers[uid].wishPosition === pos) return uid;
+        }
+        return null;
+      };
+      if(wishPosition === "FLEX"){
+        const free = CONFIG.positions.find(p=> !occupantOf(p));
+        if(!free){
+          setStatus("Dieses Team ist inzwischen voll. Bitte wähle ein anderes Team oder die Warteliste.", true);
+          updateTeamOptions();
+          return;
+        }
+        finalPosition = free;
+      } else if(occupantOf(wishPosition)){
+        setStatus("Diese Position ist in diesem Team inzwischen vergeben. Bitte wähle neu.", true);
+        updateTeamOptions();
+        return;
+      }
+    }
+
+    const data = { name, availableFrom, wishPosition: finalPosition, altPosition, note, team, uid: currentUid };
     if(existing && existing.timestamp){
       data.timestamp = existing.timestamp; // ursprüngliche Anmeldezeit bleibt erhalten
     } else {
@@ -464,13 +537,12 @@ function setStatus(msg, isError){
 
 /* ============================================================
    3) TEAM-EINTEILUNGS-LOGIK
-   Reihenfolge: sortiert nach Anmeldezeit (timestamp) aufsteigend.
-   Für jeden Spieler wird Team für Team (Team 1, dann Team 2, ...)
-   geprüft:
-     a) Ist die Wunschposition in diesem Team frei -> zuweisen.
-     b) Sonst: ist die alternative Position frei -> zuweisen.
-     c) "Flexibel" -> erste freie Position im Team (PG..C Reihenfolge).
-     d) Wenn in keinem Team ein Platz passt -> Warteliste.
+   Team und Position werden von jedem Spieler selbst im Formular
+   gewählt (Feld "Team"). Diese Funktion baut daraus nur noch die
+   Anzeige: jeder Spieler landet in dem Team/Slot, den er gewählt
+   hat. Kommt es (z.B. durch einen Timing-Konflikt) doch zu einer
+   Doppelbelegung, landet der später hinzugekommene auf der
+   Warteliste, statt eine Anzeige zu überschreiben.
    ============================================================ */
 function computeTeams(playersObj){
   const players = Object.keys(playersObj || {}).map(uid=>({uid, ...playersObj[uid]}));
@@ -484,36 +556,18 @@ function computeTeams(playersObj){
   for(let i=0;i<CONFIG.numTeams;i++){
     const slots = {};
     CONFIG.positions.forEach(p=> slots[p] = null);
-    teams.push({ name: `Team ${i+1}`, slots });
+    teams.push({ name: `Team ${i+1}`, key: `team${i+1}`, slots });
   }
   const waitlist = [];
 
   players.forEach(p=>{
-    let assigned = false;
-    for(const team of teams){
-      if(p.wishPosition === "FLEX"){
-        const freePos = CONFIG.positions.find(pos=> !team.slots[pos]);
-        if(freePos){
-          team.slots[freePos] = { ...p, reason: `Flexibel – freie Position in ${team.name}` };
-          assigned = true;
-          break;
-        }
-      } else {
-        if(!team.slots[p.wishPosition]){
-          team.slots[p.wishPosition] = { ...p, reason: `Wunschposition frei in ${team.name}` };
-          assigned = true;
-          break;
-        }
-        if(p.altPosition && !team.slots[p.altPosition]){
-          team.slots[p.altPosition] = { ...p, reason: `Alternative Position frei in ${team.name} (Wunsch belegt)` };
-          assigned = true;
-          break;
-        }
-      }
-    }
-    if(!assigned){
-      p.reason = "Keine passende Position (Wunsch & Alternative belegt) – auf Warteliste";
-      waitlist.push(p);
+    const team = teams.find(t=> t.key === p.team);
+    if(team && p.wishPosition && team.slots.hasOwnProperty(p.wishPosition) && !team.slots[p.wishPosition]){
+      team.slots[p.wishPosition] = p;
+    } else if(team){
+      waitlist.push({ ...p, reason: `Position war in ${team.name} bereits vergeben – auf Warteliste verschoben` });
+    } else {
+      waitlist.push({ ...p, reason: "Warteliste gewählt" });
     }
   });
 
@@ -603,12 +657,14 @@ function syncMyForm(){
     document.getElementById("fWish").value = mine.wishPosition || "";
     document.getElementById("fAlt").value = mine.altPosition || "";
     document.getElementById("fNote").value = mine.note || "";
+    document.getElementById("fTeam").value = mine.team || "";
     cancelBtn.style.display = "block";
     submitBtn.textContent = "Angaben aktualisieren";
   } else {
     cancelBtn.style.display = "none";
     submitBtn.textContent = "Für heute anmelden";
   }
+  updateTeamOptions();
 }
 
 function formatTime(ts){
